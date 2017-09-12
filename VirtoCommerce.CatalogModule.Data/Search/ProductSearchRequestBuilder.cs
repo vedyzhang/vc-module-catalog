@@ -1,25 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using VirtoCommerce.CatalogModule.Data.Search.BrowseFilters;
 using VirtoCommerce.Domain.Catalog.Model.Search;
 using VirtoCommerce.Domain.Commerce.Model.Search;
 using VirtoCommerce.Domain.Search;
 using VirtoCommerce.Platform.Core.Common;
-using RangeFilter = VirtoCommerce.Domain.Search.RangeFilter;
-using RangeFilterValue = VirtoCommerce.Domain.Search.RangeFilterValue;
 
 namespace VirtoCommerce.CatalogModule.Data.Search
 {
     public class ProductSearchRequestBuilder : ISearchRequestBuilder
     {
         private readonly ISearchPhraseParser _searchPhraseParser;
-        private readonly IBrowseFilterService _browseFilterService;
+        private readonly ITermFilterBuilder _termFilterBuilder;
+        private readonly IAggregationConverter _aggregationConverter;
 
-        public ProductSearchRequestBuilder(ISearchPhraseParser searchPhraseParser, IBrowseFilterService browseFilterService)
+        public ProductSearchRequestBuilder(ISearchPhraseParser searchPhraseParser, ITermFilterBuilder termFilterBuilder, IAggregationConverter aggregationConverter)
         {
             _searchPhraseParser = searchPhraseParser;
-            _browseFilterService = browseFilterService;
+            _termFilterBuilder = termFilterBuilder;
+            _aggregationConverter = aggregationConverter;
         }
 
         public virtual string DocumentType { get; } = KnownDocumentTypes.Product;
@@ -42,7 +40,7 @@ namespace VirtoCommerce.CatalogModule.Data.Search
                     Sorting = GetSorting(productSearchCriteria),
                     Skip = criteria.Skip,
                     Take = criteria.Take,
-                    Aggregations = GetAggregationRequests(productSearchCriteria, allFilters),
+                    Aggregations = _aggregationConverter?.GetAggregationRequests(productSearchCriteria, allFilters),
                 };
             }
 
@@ -54,9 +52,7 @@ namespace VirtoCommerce.CatalogModule.Data.Search
         {
             var result = new List<SortingField>();
 
-            var categoryId = criteria.Outline.AsCategoryId();
-            var priorityFieldName = StringsHelper.JoinNonEmptyStrings("_", "priority", criteria.CatalogId, categoryId).ToLowerInvariant();
-            var priorityFields = new[] { "priority", priorityFieldName }.Distinct().ToArray();
+            var priorityFields = criteria.GetPriorityFields();
 
             foreach (var sortInfo in criteria.SortInfos)
             {
@@ -102,13 +98,15 @@ namespace VirtoCommerce.CatalogModule.Data.Search
         protected virtual FiltersContainer GetAllFilters(ProductSearchCriteria criteria)
         {
             var permanentFilters = GetPermanentFilters(criteria);
-            var removableFilters = GetRemovableFilters(criteria, permanentFilters);
+            var termFilters = _termFilterBuilder.GetTermFilters(criteria);
 
-            return new FiltersContainer
+            var result = new FiltersContainer
             {
-                PermanentFilters = permanentFilters,
-                RemovableFilters = removableFilters,
+                PermanentFilters = permanentFilters.Concat(termFilters.PermanentFilters).ToList(),
+                RemovableFilters = termFilters.RemovableFilters,
             };
+
+            return result;
         }
 
         protected virtual IList<IFilter> GetPermanentFilters(ProductSearchCriteria criteria)
@@ -132,11 +130,7 @@ namespace VirtoCommerce.CatalogModule.Data.Search
                 result.Add(FiltersHelper.CreateTermFilter("catalog", criteria.CatalogId.ToLowerInvariant()));
             }
 
-            if (!criteria.Outline.IsNullOrEmpty())
-            {
-                var outline = string.Join("/", criteria.CatalogId, criteria.Outline).TrimEnd('/', '*').ToLowerInvariant();
-                result.Add(FiltersHelper.CreateTermFilter("__outline", outline));
-            }
+            result.Add(FiltersHelper.CreateOutlineFilter(criteria));
 
             result.Add(FiltersHelper.CreateDateRangeFilter("startdate", criteria.StartDateFrom, criteria.StartDate, false, true));
 
@@ -163,246 +157,5 @@ namespace VirtoCommerce.CatalogModule.Data.Search
 
             return result;
         }
-
-        protected virtual IList<KeyValuePair<string, IFilter>> GetRemovableFilters(ProductSearchCriteria criteria, IList<IFilter> permanentFilters)
-        {
-            var result = new List<KeyValuePair<string, IFilter>>();
-
-            var terms = criteria.Terms.AsKeyValues();
-            if (terms.Any())
-            {
-                var browseFilters = GetBrowseFilters(criteria);
-
-                var filtersAndValues = browseFilters
-                    ?.Select(x => new { Filter = x, Values = x.GetValues() })
-                    .ToList();
-
-                foreach (var term in terms)
-                {
-                    var browseFilter = browseFilters?.SingleOrDefault(x => x.Key.EqualsInvariant(term.Key));
-
-                    // Handle special filter term with a key = "tags", it contains just values and we need to determine which filter to use
-                    if (browseFilter == null && term.Key == "tags")
-                    {
-                        foreach (var termValue in term.Values)
-                        {
-                            // Try to find filter by value
-                            var filterAndValues = filtersAndValues?.FirstOrDefault(x => x.Values.Any(y => y.Id.Equals(termValue)));
-                            if (filterAndValues != null)
-                            {
-                                var filter = ConvertBrowseFilter(filterAndValues.Filter, term.Values, criteria);
-                                permanentFilters.Add(filter);
-                            }
-                        }
-                    }
-                    else if (browseFilter != null) // Predefined filter
-                    {
-                        var filter = ConvertBrowseFilter(browseFilter, term.Values, criteria);
-                        result.Add(new KeyValuePair<string, IFilter>(browseFilter.Key, filter));
-                    }
-                    else // Custom term
-                    {
-                        var filter = FiltersHelper.CreateTermFilter(term.Key, term.Values);
-                        permanentFilters.Add(filter);
-                    }
-                }
-            }
-
-            return result;
-        }
-
-        protected virtual IFilter ConvertBrowseFilter(IBrowseFilter filter, IList<string> valueIds, ProductSearchCriteria criteria)
-        {
-            IFilter result = null;
-
-            if (filter != null && valueIds != null)
-            {
-                var attributeFilter = filter as AttributeFilter;
-                var rangeFilter = filter as BrowseFilters.RangeFilter;
-                var priceRangeFilter = filter as PriceRangeFilter;
-
-                if (attributeFilter != null)
-                {
-                    result = ConvertAttributeFilter(attributeFilter, valueIds);
-                }
-                else if (rangeFilter != null)
-                {
-                    result = ConvertRangeFilter(rangeFilter, valueIds);
-                }
-                else if (priceRangeFilter != null)
-                {
-                    result = ConvertPriceRangeFilter(priceRangeFilter, valueIds, criteria);
-                }
-            }
-
-            return result;
-        }
-
-        protected virtual IFilter ConvertAttributeFilter(AttributeFilter attributeFilter, IList<string> valueIds)
-        {
-            var result = new TermFilter
-            {
-                FieldName = attributeFilter.Key,
-                Values = attributeFilter.Values
-                ?.Where(v => valueIds.Contains(v.Id, StringComparer.OrdinalIgnoreCase))
-                .Select(v => v.Value)
-                .ToArray() ?? valueIds,
-            };
-
-            return result;
-        }
-
-        protected virtual IFilter ConvertPriceRangeFilter(PriceRangeFilter priceRangeFilter, IList<string> valueIds, ProductSearchCriteria criteria)
-        {
-            IFilter result = null;
-
-            if (string.IsNullOrEmpty(criteria.Currency) || priceRangeFilter.Currency.EqualsInvariant(criteria.Currency))
-            {
-                var filters = priceRangeFilter.Values
-                    ?.Where(v => valueIds.Contains(v.Id, StringComparer.OrdinalIgnoreCase))
-                    .Select(v => FiltersHelper.CreatePriceRangeFilter(priceRangeFilter.Currency, criteria.Pricelists, v.Lower, v.Upper, v.IncludeLower, v.IncludeUpper))
-                    .Where(f => f != null)
-                    .ToList();
-
-                result = filters.Or();
-            }
-
-            return result;
-        }
-
-        protected virtual IFilter ConvertRangeFilter(BrowseFilters.RangeFilter rangeFilter, IList<string> valueIds)
-        {
-            var result = new RangeFilter
-            {
-                FieldName = rangeFilter.Key,
-                Values = rangeFilter.Values
-                    ?.Where(v => valueIds.Contains(v.Id, StringComparer.OrdinalIgnoreCase))
-                    .Select(ConvertRangeFilterValue)
-                    .ToArray(),
-            };
-
-            return result;
-        }
-
-        protected virtual RangeFilterValue ConvertRangeFilterValue(BrowseFilters.RangeFilterValue rangeFilterValue)
-        {
-            return new RangeFilterValue
-            {
-                Lower = rangeFilterValue.Lower,
-                Upper = rangeFilterValue.Upper,
-                IncludeLower = rangeFilterValue.IncludeLower,
-                IncludeUpper = rangeFilterValue.IncludeUpper,
-            };
-        }
-
-        #region Aggregations
-
-        protected virtual IList<AggregationRequest> GetAggregationRequests(ProductSearchCriteria criteria, FiltersContainer allFilters)
-        {
-            var result = new List<AggregationRequest>();
-
-            var browseFilters = GetBrowseFilters(criteria);
-            if (browseFilters != null)
-            {
-                foreach (var filter in browseFilters)
-                {
-                    var existingFilters = allFilters.GetFiltersExceptSpecified(filter.Key);
-
-                    var attributeFilter = filter as AttributeFilter;
-                    var priceRangeFilter = filter as PriceRangeFilter;
-                    var rangeFilter = filter as BrowseFilters.RangeFilter;
-
-                    AggregationRequest aggregationRequest = null;
-                    IList<AggregationRequest> aggregationRequests = null;
-
-                    if (attributeFilter != null)
-                    {
-                        aggregationRequest = GetAttributeFilterAggregationRequest(attributeFilter, existingFilters);
-                    }
-                    else if (rangeFilter != null)
-                    {
-                        aggregationRequests = GetRangeFilterAggregationRequests(rangeFilter, existingFilters);
-                    }
-                    else if (priceRangeFilter != null && priceRangeFilter.Currency.EqualsInvariant(criteria.Currency))
-                    {
-                        aggregationRequests = GetPriceRangeFilterAggregationRequests(priceRangeFilter, criteria, existingFilters);
-                    }
-
-                    if (aggregationRequest != null)
-                    {
-                        result.Add(aggregationRequest);
-                    }
-
-                    if (aggregationRequests != null)
-                    {
-                        result.AddRange(aggregationRequests.Where(f => f != null));
-                    }
-                }
-            }
-
-            return result;
-        }
-
-        protected virtual IList<IBrowseFilter> GetBrowseFilters(ProductSearchCriteria criteria)
-        {
-            var browseFilters = _browseFilterService.GetAllFilters(criteria.StoreId);
-
-            var result = browseFilters
-                ?.Where(f => !(f is PriceRangeFilter) || ((PriceRangeFilter)f).Currency.EqualsInvariant(criteria.Currency))
-                .ToList();
-
-            return result;
-        }
-
-        protected virtual AggregationRequest GetAttributeFilterAggregationRequest(AttributeFilter attributeFilter, IEnumerable<IFilter> existingFilters)
-        {
-            return new TermAggregationRequest
-            {
-                FieldName = attributeFilter.Key,
-                Values = attributeFilter.Values?.Select(v => v.Id).ToArray(),
-                Filter = existingFilters.And(),
-                Size = attributeFilter.FacetSize,
-            };
-        }
-
-        protected virtual IList<AggregationRequest> GetRangeFilterAggregationRequests(BrowseFilters.RangeFilter rangeFilter, IList<IFilter> existingFilters)
-        {
-            var result = rangeFilter.Values.Select(v => GetRangeFilterValueAggregationRequest(rangeFilter.Key, v, existingFilters)).ToList();
-            return result;
-        }
-
-        protected virtual AggregationRequest GetRangeFilterValueAggregationRequest(string fieldName, BrowseFilters.RangeFilterValue value, IEnumerable<IFilter> existingFilters)
-        {
-            var valueFilter = FiltersHelper.CreateRangeFilter(fieldName, value.Lower, value.Upper, value.IncludeLower, value.IncludeUpper);
-
-            var result = new RangeAggregationRequest
-            {
-                Id = $"{fieldName}-{value.Id}",
-                Filter = existingFilters.And(valueFilter)
-            };
-
-            return result;
-        }
-
-        protected virtual IList<AggregationRequest> GetPriceRangeFilterAggregationRequests(PriceRangeFilter priceRangeFilter, ProductSearchCriteria criteria, IList<IFilter> existingFilters)
-        {
-            var result = priceRangeFilter.Values.Select(v => GetPriceRangeFilterValueAggregationRequest(priceRangeFilter, v, existingFilters, criteria.Pricelists)).ToList();
-            return result;
-        }
-
-        protected virtual AggregationRequest GetPriceRangeFilterValueAggregationRequest(PriceRangeFilter priceRangeFilter, BrowseFilters.RangeFilterValue value, IEnumerable<IFilter> existingFilters, IList<string> pricelists)
-        {
-            var valueFilter = FiltersHelper.CreatePriceRangeFilter(priceRangeFilter.Currency, pricelists, value.Lower, value.Upper, value.IncludeLower, value.IncludeUpper);
-
-            var result = new TermAggregationRequest
-            {
-                Id = $"{priceRangeFilter.Key}-{value.Id}",
-                Filter = existingFilters.And(valueFilter)
-            };
-
-            return result;
-        }
-
-        #endregion
     }
 }

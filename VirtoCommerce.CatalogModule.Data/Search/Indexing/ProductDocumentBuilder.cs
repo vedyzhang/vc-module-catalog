@@ -38,7 +38,7 @@ namespace VirtoCommerce.CatalogModule.Data.Search.Indexing
 
         protected virtual IList<CatalogProduct> GetProducts(IList<string> productIds)
         {
-            return _itemService.GetByIds(productIds.ToArray(), ItemResponseGroup.ItemProperties | ItemResponseGroup.Variations | ItemResponseGroup.Outlines | ItemResponseGroup.Seo | ItemResponseGroup.Links);
+            return _itemService.GetByIds(productIds.ToArray(), ItemResponseGroup.ItemLarge);
         }
 
         protected virtual IndexDocument CreateDocument(CatalogProduct product)
@@ -90,8 +90,19 @@ namespace VirtoCommerce.CatalogModule.Data.Search.Indexing
                 document.Add(new IndexDocumentField("__outline", outline.ToLowerInvariant()) { IsRetrievable = true, IsFilterable = true, IsCollection = true });
             }
 
-            // Index custom properties
+            // Index custom product properties
             IndexCustomProperties(document, product.Properties, product.PropertyValues);
+            //Index product category properties
+            if (product.Category != null)
+            {
+                IndexCustomProperties(document, product.Category.Properties, product.Category.PropertyValues);
+            }
+            //Index catalog properties
+            if (product.Catalog != null)
+            {
+                IndexCustomProperties(document, product.Catalog.Properties, product.Catalog.PropertyValues);
+            }
+
 
             if (product.Variations != null)
             {

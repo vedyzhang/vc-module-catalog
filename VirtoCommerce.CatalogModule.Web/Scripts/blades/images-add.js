@@ -5,7 +5,7 @@
         'platformWebApp.assets.api', 'virtoCommerce.catalogModule.imageTools', 'platformWebApp.settings',
         function ($scope, $filter, $translate, FileUploader, dialogService, bladeNavigationService, authService, assets, imageTools, settings) {
             var blade = $scope.blade;
-            var pb = blade.parentBlade;
+
             blade.hasAssetCreatePermission = bladeNavigationService.checkPermission('platform:asset:create');
 
             blade.headIcon = 'fa-image';
@@ -18,7 +18,13 @@
                 initialize(item);
             }
 
+            var promise = settings.getValues({ id: 'VirtoCommerce.Core.General.Languages' }).$promise;
+            $scope.languages = [];
             function initialize(item) {
+                promise.then(function (promiseData) {
+                    $scope.languages = promiseData;
+                });
+
                 blade.item = item;
                 blade.title = 'catalog.blades.image-upload.title';
                 $scope.imageTypes = settings.getValues({ id: 'Catalog.ImageCategories' });
@@ -39,6 +45,7 @@
                         angular.forEach(images, function (image) {
                             //ADD uploaded image
                             image.isImage = true;
+                            image.group = blade.imageType;
                             blade.currentEntities.push(image);
                             var request = { imageUrl: image.url, isRegenerateAll: true };
 
@@ -66,6 +73,7 @@
                     assets.uploadFromUrl({ folderUrl: getImageUrl(blade.item.code, blade.imageType).folderUrl, url: blade.newExternalImageUrl }, function (data) {
                         _.each(data, function (x) {
                             x.isImage = true;
+                            x.group = blade.imageType;
                             blade.currentEntities.push(x);
                         });
                         blade.newExternalImageUrl = undefined;
@@ -74,8 +82,12 @@
             };
 
             $scope.saveChanges = function () {
-                if (blade.onSelect)
+                if (blade.onSelect) {
+                    _.each(blade.currentEntities, function (entity) {
+                        entity.languageCode = blade.selectedLanguageCode;
+                    });
                     blade.onSelect(blade.currentEntities);
+                }
 
                 $scope.bladeClose();
             };

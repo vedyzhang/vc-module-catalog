@@ -12,13 +12,16 @@ using VirtoCommerce.CatalogModule.Data.Search;
 using VirtoCommerce.CatalogModule.Data.Search.BrowseFilters;
 using VirtoCommerce.CatalogModule.Data.Search.Indexing;
 using VirtoCommerce.CatalogModule.Data.Services;
+using VirtoCommerce.CatalogModule.Data.Services.Validation;
 using VirtoCommerce.CatalogModule.Web.ExportImport;
 using VirtoCommerce.CatalogModule.Web.JsonConverters;
 using VirtoCommerce.CatalogModule.Web.Security;
+using VirtoCommerce.Domain.Catalog.Model;
 using VirtoCommerce.Domain.Catalog.Services;
 using VirtoCommerce.Domain.Commerce.Services;
 using VirtoCommerce.Domain.Search;
 using VirtoCommerce.Domain.Store.Model;
+using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.DynamicProperties;
 using VirtoCommerce.Platform.Core.ExportImport;
 using VirtoCommerce.Platform.Core.Modularity;
@@ -27,14 +30,12 @@ using VirtoCommerce.Platform.Core.Settings;
 using VirtoCommerce.Platform.Data.Infrastructure;
 using VirtoCommerce.Platform.Data.Infrastructure.Interceptors;
 using VirtoCommerce.Platform.Data.Repositories;
-using VirtoCommerce.CatalogModule.Data.Services.Validation;
-using VirtoCommerce.Domain.Catalog.Model;
 
 namespace VirtoCommerce.CatalogModule.Web
 {
     public class Module : ModuleBase, ISupportExportImportModule
     {
-        private const string _connectionStringName = "VirtoCommerce";
+        private static readonly string _connectionString = ConfigurationHelper.GetNonEmptyConnectionStringValue("VirtoCommerce");
         private readonly IUnityContainer _container;
 
         public Module(IUnityContainer container)
@@ -48,7 +49,7 @@ namespace VirtoCommerce.CatalogModule.Web
         {
             base.SetupDatabase();
 
-            using (var db = new CatalogRepositoryImpl(null, _connectionStringName, _container.Resolve<AuditableInterceptor>()))
+            using (var db = new CatalogRepositoryImpl(null, _connectionString, _container.Resolve<AuditableInterceptor>()))
             {
                 var initializer = new SetupDatabaseInitializer<CatalogRepositoryImpl, Data.Migrations.Configuration>();
 
@@ -71,7 +72,7 @@ namespace VirtoCommerce.CatalogModule.Web
                 new NearRealtimeIndexer(TryResolve<ISearchProvider>, _container.Resolve<ISettingsManager>(), TryResolve<IIndexingManager>)
             };
 
-            Func<ICatalogRepository> catalogRepFactory = () => new CatalogRepositoryImpl(TryResolve<ISearchProvider>, _connectionStringName, interceptors.ToArray());
+            Func<ICatalogRepository> catalogRepFactory = () => new CatalogRepositoryImpl(TryResolve<ISearchProvider>, _connectionString, interceptors.ToArray());
 
             _container.RegisterInstance(catalogRepFactory);
 
@@ -90,6 +91,8 @@ namespace VirtoCommerce.CatalogModule.Web
             #region Search
 
             _container.RegisterType<IBrowseFilterService, BrowseFilterService>();
+            _container.RegisterType<ITermFilterBuilder, TermFilterBuilder>();
+            _container.RegisterType<IAggregationConverter, AggregationConverter>();
 
             _container.RegisterType<ISearchRequestBuilder, ProductSearchRequestBuilder>(nameof(ProductSearchRequestBuilder));
             _container.RegisterType<ISearchRequestBuilder, CategorySearchRequestBuilder>(nameof(CategorySearchRequestBuilder));
@@ -107,7 +110,7 @@ namespace VirtoCommerce.CatalogModule.Web
             _container.RegisterInstance(propertyValueValidatorFactory);
 
             _container.RegisterType<AbstractValidator<IHasProperties>, HasPropertiesValidator>();
-            
+
             #endregion
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using VirtoCommerce.Domain.Catalog.Model;
 using VirtoCommerce.Domain.Search;
+using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.Settings;
 
 namespace VirtoCommerce.CatalogModule.Data.Search.Indexing
@@ -22,23 +23,31 @@ namespace VirtoCommerce.CatalogModule.Data.Search.Indexing
         {
             foreach (var propValue in propertyValues.Where(x => x.Value != null))
             {
-                var propertyName = (propValue.PropertyName ?? "").ToLowerInvariant();
-                var property = properties.FirstOrDefault(x => string.Equals(x.Name, propValue.PropertyName, StringComparison.InvariantCultureIgnoreCase) && x.ValueType == propValue.ValueType);
-                var isCollection = property?.Multivalue == true;
+                var property = properties.FirstOrDefault(p => p.Name.EqualsInvariant(propValue.PropertyName) && p.ValueType == propValue.ValueType);
 
-                switch (propValue.ValueType)
+                var propertyName = propValue.PropertyName?.ToLowerInvariant();
+                if (!string.IsNullOrEmpty(propertyName))
                 {
-                    case PropertyValueType.Boolean:
-                    case PropertyValueType.DateTime:
-                    case PropertyValueType.Number:
-                        document.Add(new IndexDocumentField(propertyName, propValue.Value) { IsRetrievable = true, IsFilterable = true, IsCollection = isCollection });
-                        break;
-                    case PropertyValueType.LongText:
-                        document.Add(new IndexDocumentField(propertyName, propValue.Value.ToString().ToLowerInvariant()) { IsRetrievable = true, IsSearchable = true, IsCollection = isCollection });
-                        break;
-                    case PropertyValueType.ShortText: // do not tokenize small values as they will be used for lookups and filters
-                        document.Add(new IndexDocumentField(propertyName, propValue.Value.ToString()) { IsRetrievable = true, IsFilterable = true, IsCollection = isCollection });
-                        break;
+                    var isCollection = property?.Multivalue == true;
+
+                    switch (propValue.ValueType)
+                    {
+                        case PropertyValueType.Boolean:
+                        case PropertyValueType.DateTime:
+                        case PropertyValueType.Number:
+                            document.Add(new IndexDocumentField(propertyName, propValue.Value) { IsRetrievable = true, IsFilterable = true, IsCollection = isCollection });
+                            break;
+                        case PropertyValueType.LongText:
+                            document.Add(new IndexDocumentField(propertyName, propValue.Value.ToString().ToLowerInvariant()) { IsRetrievable = true, IsSearchable = true, IsCollection = isCollection });
+                            break;
+                        case PropertyValueType.ShortText:
+                            // Index alias when it is available instead of display value.
+                            // Do not tokenize small values as they will be used for lookups and filters.
+                            var alias = GetPropertyValueAlias(property, propValue);
+                            var shortTextValue = !string.IsNullOrEmpty(alias) ? alias : propValue.Value.ToString();
+                            document.Add(new IndexDocumentField(propertyName, shortTextValue) { IsRetrievable = true, IsFilterable = true, IsCollection = isCollection });
+                            break;
+                    }
                 }
 
                 // Add value to the searchable content field
@@ -58,6 +67,13 @@ namespace VirtoCommerce.CatalogModule.Data.Search.Indexing
                         break;
                 }
             }
+        }
+
+        protected virtual string GetPropertyValueAlias(Property property, PropertyValue propValue)
+        {
+            var dictionaryValueAlias = property?.DictionaryValues?.Where(v => v.Id.EqualsInvariant(propValue.ValueId)).Select(v => v.Alias).FirstOrDefault();
+            var result = !string.IsNullOrEmpty(dictionaryValueAlias) ? dictionaryValueAlias : propValue.Alias;
+            return result;
         }
 
         protected virtual string[] GetOutlineStrings(IEnumerable<Outline> outlines)

@@ -1,19 +1,18 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using CacheManager.Core;
 using CsvHelper;
 using FluentValidation;
 using Moq;
 using VirtoCommerce.CatalogModule.Data.Repositories;
 using VirtoCommerce.CatalogModule.Data.Services;
-using VirtoCommerce.CatalogModule.Data.Services.Validation;
 using VirtoCommerce.CatalogModule.Web.ExportImport;
 using VirtoCommerce.CoreModule.Data.Repositories;
 using VirtoCommerce.CoreModule.Data.Services;
 using VirtoCommerce.Domain.Catalog.Model;
 using VirtoCommerce.Domain.Catalog.Services;
 using VirtoCommerce.Domain.Commerce.Services;
+using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Data.Infrastructure.Interceptors;
 using Xunit;
 
@@ -105,7 +104,7 @@ namespace VirtoCommerce.CatalogModule.Test
 
         private static ICatalogService GetCatalogService()
         {
-            return new CatalogServiceImpl(GetCatalogRepository, GetCommerceService(), null, new Mock<AbstractValidator<IHasProperties>>().Object);
+            return new CatalogServiceImpl(GetCatalogRepository, null, new Mock<AbstractValidator<IHasProperties>>().Object);
         }
 
         private static IItemService GetItemService()
@@ -116,13 +115,18 @@ namespace VirtoCommerce.CatalogModule.Test
 
         private static ICommerceService GetCommerceService()
         {
-            return new CommerceServiceImpl(() => new CommerceRepositoryImpl("VirtoCommerce", new EntityPrimaryKeyGeneratorInterceptor(), new AuditableInterceptor(null)));
+            return new CommerceServiceImpl(() => new CommerceRepositoryImpl(GetConnectionString(), new EntityPrimaryKeyGeneratorInterceptor(), new AuditableInterceptor(null)));
         }
 
         private static ICatalogRepository GetCatalogRepository()
         {
-            var retVal = new CatalogRepositoryImpl(null, "VirtoCommerce", new EntityPrimaryKeyGeneratorInterceptor(), new AuditableInterceptor(null));
+            var retVal = new CatalogRepositoryImpl(null, GetConnectionString(), new EntityPrimaryKeyGeneratorInterceptor(), new AuditableInterceptor(null));
             return retVal;
+        }
+
+        private static string GetConnectionString()
+        {
+            return ConfigurationHelper.GetNonEmptyConnectionStringValue("VirtoCommerce");
         }
     }
 }

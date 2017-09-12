@@ -1,10 +1,10 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Xml.Serialization;
-using VirtoCommerce.Domain.Store.Model;
+using Newtonsoft.Json;
 using VirtoCommerce.Domain.Store.Services;
+using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.DynamicProperties;
 
 namespace VirtoCommerce.CatalogModule.Data.Search.BrowseFilters
@@ -20,95 +20,133 @@ namespace VirtoCommerce.CatalogModule.Data.Search.BrowseFilters
             _storeService = storeService;
         }
 
-        private static readonly XmlSerializer _serializer = new XmlSerializer(typeof(FilteredBrowsing));
+        private static readonly XmlSerializer _xmlSerializer = new XmlSerializer(typeof(FilteredBrowsing));
+        private static readonly JsonSerializer _jsonSerializer = new JsonSerializer
+        {
+            DefaultValueHandling = DefaultValueHandling.Include,
+            NullValueHandling = NullValueHandling.Include,
+            Formatting = Formatting.Indented,
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            TypeNameHandling = TypeNameHandling.None,
+        };
 
         public virtual IList<IBrowseFilter> GetAllFilters(string storeId)
         {
-            var filters = new List<IBrowseFilter>();
+            var serializedValue = GetSerializedValue(storeId);
+            var result = Deserialize(serializedValue);
+            return result;
+        }
 
+        public virtual void SaveFilters(string storeId, IList<IBrowseFilter> filters)
+        {
+            var serializedValue = Serialize(filters);
+            SaveSerializedValue(storeId, serializedValue);
+        }
+
+
+        protected virtual string GetSerializedValue(string storeId)
+        {
             var store = _storeService.GetById(storeId);
-            var browsing = GetFilteredBrowsing(store);
-
-            if (browsing != null)
-            {
-                if (browsing.Attributes != null)
-                {
-                    filters.AddRange(browsing.Attributes);
-                }
-
-                if (browsing.AttributeRanges != null)
-                {
-                    filters.AddRange(browsing.AttributeRanges);
-                }
-
-                if (browsing.Prices != null)
-                {
-                    filters.AddRange(browsing.Prices);
-                }
-            }
-
-            return filters;
+            var result = store?.GetDynamicPropertyValue(FilteredBrowsingPropertyName, string.Empty);
+            return result;
         }
 
-        public virtual IList<AttributeFilter> GetAttributeFilters(Store store)
+        protected virtual void SaveSerializedValue(string storeId, string serializedValue)
         {
-            var browsing = GetFilteredBrowsing(store);
-            return browsing?.Attributes;
-        }
-
-        public virtual void SetAttributeFilters(Store store, IList<AttributeFilter> filters)
-        {
+            var store = _storeService.GetById(storeId);
             if (store != null)
             {
-                var browsing = GetFilteredBrowsing(store) ?? new FilteredBrowsing();
-                browsing.Attributes = filters?.ToArray();
-                SetFilteredBrowsing(store, browsing);
+                var property = store.DynamicProperties.FirstOrDefault(p => p.Name == FilteredBrowsingPropertyName);
+                if (property == null)
+                {
+                    property = new DynamicObjectProperty { Name = FilteredBrowsingPropertyName };
+                    store.DynamicProperties.Add(property);
+                }
+
+                property.Values = new List<DynamicPropertyObjectValue>(new[] { new DynamicPropertyObjectValue { Value = serializedValue } });
+
+                _storeService.Update(new[] { store });
             }
         }
 
 
-        protected virtual object GetObjectValue(IDictionary<string, object> context, string key)
+        // Support JSON for serialization
+        private static string Serialize(IList<IBrowseFilter> filters)
         {
-            object result = null;
+            string result = null;
 
-            if (context.ContainsKey(key))
+            if (filters != null)
             {
-                result = context[key];
+                // Group by type
+                var browsing = new FilteredBrowsing
+                {
+                    Attributes = filters.OfType<AttributeFilter>().ToArray(),
+                    AttributeRanges = filters.OfType<RangeFilter>().ToArray(),
+                    Prices = filters.OfType<PriceRangeFilter>().ToArray(),
+                };
+
+                // Serialize to JSON
+                using (var memStream = new MemoryStream())
+                {
+                    browsing.SerializeJson(memStream, _jsonSerializer);
+                    memStream.Seek(0, SeekOrigin.Begin);
+
+                    result = memStream.ReadToString();
+                }
             }
 
             return result;
         }
 
-        protected virtual FilteredBrowsing GetFilteredBrowsing(Store store)
+        // Support both JSON and XML for deserialization
+        private static IList<IBrowseFilter> Deserialize(string value)
         {
-            FilteredBrowsing result = null;
+            IList<IBrowseFilter> result = null;
 
-            var filterSettingValue = store?.GetDynamicPropertyValue(FilteredBrowsingPropertyName, string.Empty);
-
-            if (!string.IsNullOrEmpty(filterSettingValue))
+            if (!string.IsNullOrEmpty(value))
             {
-                var reader = new StringReader(filterSettingValue);
-                result = _serializer.Deserialize(reader) as FilteredBrowsing;
+                FilteredBrowsing browsing;
+
+                if (value.StartsWith("<"))
+                {
+                    // XML
+                    var reader = new StringReader(value);
+                    browsing = _xmlSerializer.Deserialize(reader) as FilteredBrowsing;
+                }
+                else
+                {
+                    // JSON
+                    using (var stringReader = new StringReader(value))
+                    using (var jsonTextReader = new JsonTextReader(stringReader))
+                    {
+                        browsing = _jsonSerializer.Deserialize<FilteredBrowsing>(jsonTextReader);
+                    }
+                }
+
+                // Flatten groups
+                if (browsing != null)
+                {
+                    result = new List<IBrowseFilter>();
+
+                    if (browsing.Attributes != null)
+                    {
+                        result.AddRange(browsing.Attributes);
+                    }
+
+                    if (browsing.AttributeRanges != null)
+                    {
+                        result.AddRange(browsing.AttributeRanges);
+                    }
+
+                    if (browsing.Prices != null)
+                    {
+                        result.AddRange(browsing.Prices);
+                    }
+                }
+
             }
 
-            return result;
-        }
-
-        protected virtual void SetFilteredBrowsing(Store store, FilteredBrowsing browsing)
-        {
-            var builder = new StringBuilder();
-            var writer = new StringWriter(builder);
-            _serializer.Serialize(writer, browsing);
-            var value = builder.ToString();
-
-            var property = store.DynamicProperties.FirstOrDefault(p => p.Name == FilteredBrowsingPropertyName);
-            if (property == null)
-            {
-                property = new DynamicObjectProperty { Name = FilteredBrowsingPropertyName };
-                store.DynamicProperties.Add(property);
-            }
-
-            property.Values = new List<DynamicPropertyObjectValue>(new[] { new DynamicPropertyObjectValue { Value = value } });
+            return result?.OrderBy(f => f.Order).ToArray();
         }
     }
 }

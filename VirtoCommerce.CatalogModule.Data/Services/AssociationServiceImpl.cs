@@ -15,7 +15,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
     public class AssociationServiceImpl : ServiceBase, IAssociationService
     {
         private readonly Func<ICatalogRepository> _repositoryFactory;
-        public AssociationServiceImpl(Func<ICatalogRepository> repositoryFactory)            
+        public AssociationServiceImpl(Func<ICatalogRepository> repositoryFactory)
         {
             _repositoryFactory = repositoryFactory;
         }
@@ -27,7 +27,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
                 //Optimize performance and CPU usage
                 repository.DisableChangesTracking();
 
-                var productEntities = repository.GetItemByIds(owners.Select(x => x.Id).ToArray(), ItemResponseGroup.ItemAssociations);        
+                var productEntities = repository.GetItemByIds(owners.Select(x => x.Id).ToArray(), ItemResponseGroup.ItemAssociations);
                 foreach (var productEntity in productEntities)
                 {
                     var owner = owners.FirstOrDefault(x => x.Id == productEntity.Id);

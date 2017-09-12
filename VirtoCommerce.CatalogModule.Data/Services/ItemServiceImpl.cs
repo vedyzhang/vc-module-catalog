@@ -1,18 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using CacheManager.Core;
 using FluentValidation;
 using VirtoCommerce.CatalogModule.Data.Extensions;
 using VirtoCommerce.CatalogModule.Data.Model;
 using VirtoCommerce.CatalogModule.Data.Repositories;
+using VirtoCommerce.CatalogModule.Data.Services.Validation;
 using VirtoCommerce.Domain.Catalog.Model;
 using VirtoCommerce.Domain.Catalog.Services;
 using VirtoCommerce.Domain.Commerce.Model;
 using VirtoCommerce.Domain.Commerce.Services;
 using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Data.Infrastructure;
-using VirtoCommerce.CatalogModule.Data.Services.Validation;
 
 namespace VirtoCommerce.CatalogModule.Data.Services
 {
@@ -25,8 +24,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
         private readonly Func<ICatalogRepository> _repositoryFactory;
         private readonly AbstractValidator<IHasProperties> _hasPropertyValidator;
 
-        public ItemServiceImpl(Func<ICatalogRepository> catalogRepositoryFactory, ICommerceService commerceService, IOutlineService outlineService, ICatalogService catalogService, ICategoryService categoryService, ICacheManager<object> cacheManager,
-            AbstractValidator<IHasProperties> hasPropertyValidator)
+        public ItemServiceImpl(Func<ICatalogRepository> catalogRepositoryFactory, ICommerceService commerceService, IOutlineService outlineService, ICatalogService catalogService, ICategoryService categoryService, AbstractValidator<IHasProperties> hasPropertyValidator)
         {
             _catalogService = catalogService;
             _categoryService = categoryService;
@@ -40,7 +38,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
 
         public CatalogProduct GetById(string itemId, ItemResponseGroup respGroup, string catalogId = null)
         {
-            var results = this.GetByIds(new[] { itemId }, respGroup, catalogId);
+            var results = GetByIds(new[] { itemId }, respGroup, catalogId);
             return results.Any() ? results.First() : null;
         }
 
@@ -94,9 +92,17 @@ namespace VirtoCommerce.CatalogModule.Data.Services
                 {
                     product.Associations = null;
                 }
+                if (!respGroup.HasFlag(ItemResponseGroup.ReferencedAssociations))
+                {
+                    product.ReferencedAssociations = null;
+                }
                 if (!respGroup.HasFlag(ItemResponseGroup.ItemEditorialReviews))
                 {
                     product.Reviews = null;
+                }
+                if (!respGroup.HasFlag(ItemResponseGroup.Inventory))
+                {
+                    product.Inventories = null;
                 }
                 if (!respGroup.HasFlag(ItemResponseGroup.ItemProperties))
                 {
@@ -142,20 +148,21 @@ namespace VirtoCommerce.CatalogModule.Data.Services
 
         public void Delete(string[] itemIds)
         {
-            var items = GetByIds(itemIds, ItemResponseGroup.Seo | ItemResponseGroup.Variations);
+            //var items = GetByIds(itemIds, ItemResponseGroup.Seo | ItemResponseGroup.Variations);
             using (var repository = _repositoryFactory())
             {
                 repository.RemoveItems(itemIds);
                 CommitChanges(repository);
             }
         }
+
         #endregion
 
         protected virtual void SaveChanges(CatalogProduct[] products, bool disableValidation = false)
         {
             var pkMap = new PrimaryKeyResolvingMap();
 
-            ValidateProductProperties(products);
+            ValidateProducts(products);
 
             using (var repository = _repositoryFactory())
             using (var changeTracker = GetChangeTracker(repository))
@@ -163,11 +170,12 @@ namespace VirtoCommerce.CatalogModule.Data.Services
                 //Optimize performance and CPU usage
                 repository.DisableChangesTracking();
 
-                var dbExistProducts = repository.GetItemByIds(products.Where(x => !x.IsTransient()).Select(x => x.Id).ToArray(), Domain.Catalog.Model.ItemResponseGroup.ItemLarge);
+                var dbExistProducts = repository.GetItemByIds(products.Where(x => !x.IsTransient()).Select(x => x.Id).ToArray(), ItemResponseGroup.ItemLarge);
                 foreach (var product in products)
                 {
                     var modifiedEntity = AbstractTypeFactory<ItemEntity>.TryCreateInstance().FromModel(product, pkMap);
                     var originalEntity = dbExistProducts.FirstOrDefault(x => x.Id == product.Id);
+
                     if (originalEntity != null)
                     {
                         changeTracker.Attach(originalEntity);
@@ -187,31 +195,31 @@ namespace VirtoCommerce.CatalogModule.Data.Services
             }
 
             //Update SEO 
-            var productsWithVariations = products.Concat(products.Where(x => x.Variations != null).SelectMany(x => x.Variations)).ToArray();
+            var productsWithVariations = products.Concat(products.Where(x => x.Variations != null).SelectMany(x => x.Variations)).OfType<ISeoSupport>().ToArray();
             _commerceService.UpsertSeoForObjects(productsWithVariations);
         }
 
-        
+
         protected virtual void LoadDependencies(CatalogProduct[] products, bool processVariations = true)
         {
-            var catalogsMap = _catalogService.GetCatalogsList().ToDictionary(x => x.Id);
+            var catalogsMap = _catalogService.GetCatalogsList().ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
             var allCategoriesIds = products.Select(x => x.CategoryId).Where(x => x != null).Distinct().ToArray();
-            var categoriesMap = _categoryService.GetByIds(allCategoriesIds, CategoryResponseGroup.Full).ToDictionary(x => x.Id);
+            var categoriesMap = _categoryService.GetByIds(allCategoriesIds, CategoryResponseGroup.Full).ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
 
             foreach (var product in products)
             {
-                product.Catalog = catalogsMap[product.CatalogId];
+                product.Catalog = catalogsMap.GetValueOrThrow(product.CatalogId, $"catalog with key {product.CatalogId} not exist");
                 if (product.CategoryId != null)
                 {
-                    product.Category = categoriesMap[product.CategoryId];
+                    product.Category = categoriesMap.GetValueOrThrow(product.CategoryId, $"category with key {product.CategoryId} not exist");
                 }
 
                 if (product.Links != null)
                 {
                     foreach (var link in product.Links)
                     {
-                        link.Catalog = catalogsMap[link.CatalogId];
-                        link.Category = _categoryService.GetById(link.CategoryId, CategoryResponseGroup.WithProperties);
+                        link.Catalog = catalogsMap.GetValueOrThrow(link.CatalogId, $"link catalog with key {link.CatalogId} not exist");
+                        link.Category = _categoryService.GetById(link.CategoryId, CategoryResponseGroup.WithProperties | CategoryResponseGroup.WithParents);
                     }
                 }
 
@@ -275,39 +283,46 @@ namespace VirtoCommerce.CatalogModule.Data.Services
                                      .OrderBy(x => x.Name)
                                      .ToList();
 
-                foreach (var property in product.Properties)
+                if (!product.Properties.IsNullOrEmpty())
                 {
-                    property.IsInherited = true;
-
-                    if (property.ValidationRules == null) continue;
-                    foreach (var validationRule in property.ValidationRules)
+                    foreach (var property in product.Properties)
                     {
-                        if (validationRule.Property == null)
+                        property.IsInherited = true;
+
+                        if (property.ValidationRules == null) continue;
+                        foreach (var validationRule in property.ValidationRules)
                         {
-                            validationRule.Property = property;
+                            if (validationRule.Property == null)
+                            {
+                                validationRule.Property = property;
+                            }
                         }
                     }
                 }
 
-                //Self item property values
-                foreach (var propertyValue in product.PropertyValues.ToArray())
+                if (!product.PropertyValues.IsNullOrEmpty())
                 {
-                    //Try to find property meta information
-                    propertyValue.Property = product.Properties.FirstOrDefault(x => x.IsSuitableForValue(propertyValue));
-                    //Return each localized value for selected dictionary value
-                    //Because multilingual dictionary values for all languages may not stored in db need add it in result manually from property dictionary values
-                    var localizedDictValues = propertyValue.TryGetAllLocalizedDictValues();
-                    foreach (var localizedDictValue in localizedDictValues)
+                    //Self item property values
+                    foreach (var propertyValue in product.PropertyValues.ToArray())
                     {
-                        if (!product.PropertyValues.Any(x => x.ValueId == localizedDictValue.ValueId && x.LanguageCode == localizedDictValue.LanguageCode))
+                        //Try to find property meta information
+                        propertyValue.Property = product.Properties.Where(x => x.Type == PropertyType.Product || x.Type == PropertyType.Variation)
+                                                                   .FirstOrDefault(x => x.IsSuitableForValue(propertyValue));
+                        //Return each localized value for selected dictionary value
+                        //Because multilingual dictionary values for all languages may not stored in db need add it in result manually from property dictionary values
+                        var localizedDictValues = propertyValue.TryGetAllLocalizedDictValues();
+                        foreach (var localizedDictValue in localizedDictValues)
                         {
-                            product.PropertyValues.Add(localizedDictValue);
+                            if (!product.PropertyValues.Any(x => x.ValueId == localizedDictValue.ValueId && x.LanguageCode == localizedDictValue.LanguageCode))
+                            {
+                                product.PropertyValues.Add(localizedDictValue);
+                            }
                         }
                     }
                 }
 
                 //inherit not overriden property values from main product
-                if (product.MainProduct != null && product.MainProduct.PropertyValues != null)
+                if (product.MainProduct != null && !product.MainProduct.PropertyValues.IsNullOrEmpty())
                 {
                     var mainProductPopValuesGroups = product.MainProduct.PropertyValues.GroupBy(x => x.PropertyName);
                     foreach (var group in mainProductPopValuesGroups)
@@ -324,8 +339,9 @@ namespace VirtoCommerce.CatalogModule.Data.Services
                         }
                     }
                 }
+
                 //Measurement inheritance 
-                if(product.MainProduct != null)
+                if (product.MainProduct != null)
                 {
                     product.Width = product.Width ?? product.MainProduct.Width;
                     product.Height = product.Height ?? product.MainProduct.Height;
@@ -343,8 +359,20 @@ namespace VirtoCommerce.CatalogModule.Data.Services
             }
         }
 
-        private void ValidateProductProperties(CatalogProduct[] products)
+        private void ValidateProducts(CatalogProduct[] products)
         {
+            if (products == null)
+            {
+                throw new ArgumentNullException(nameof(products));
+            }
+
+            //Validate products
+            var validator = new ProductValidator();
+            foreach (var product in products)
+            {
+                validator.ValidateAndThrow(product);
+            }
+
             LoadDependencies(products, false);
             ApplyInheritanceRules(products, false);
 
@@ -353,7 +381,9 @@ namespace VirtoCommerce.CatalogModule.Data.Services
             {
                 var validatioResult = _hasPropertyValidator.Validate(item);
                 if (!validatioResult.IsValid)
-                    throw new Exception($"Product properties has validation error: {string.Join(Environment.NewLine, validatioResult.Errors.Select(x => x.ToString()))}");
+                {
+                    throw new ValidationException($"Product properties has validation error: {string.Join(Environment.NewLine, validatioResult.Errors.Select(x => x.ToString()))}");
+                }
             }
         }
     }

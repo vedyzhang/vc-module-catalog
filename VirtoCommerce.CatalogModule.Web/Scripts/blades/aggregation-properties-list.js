@@ -1,10 +1,10 @@
 ﻿angular.module('virtoCommerce.catalogModule')
-.controller('virtoCommerce.catalogModule.browseFiltersController', ['$scope', 'platformWebApp.dialogService', 'platformWebApp.bladeNavigationService', 'virtoCommerce.catalogModule.browsefilters', function ($scope, dialogService, bladeNavigationService, browseFilters) {
+    .controller('virtoCommerce.catalogModule.aggregationPropertiesController', ['$scope', 'platformWebApp.dialogService', 'platformWebApp.bladeNavigationService', 'virtoCommerce.catalogModule.aggregationProperties', function ($scope, dialogService, bladeNavigationService, aggregationProperties) {
     var blade = $scope.blade;
     blade.updatePermission = 'store:update';
 
     function initializeBlade() {
-        browseFilters.queryFilterProperties({ id: blade.storeId }, function (results) {
+        aggregationProperties.getProperties({ storeId: blade.storeId }, function (results) {
             blade.currentEntities = angular.copy(results);
             blade.origEntity = results;
 
@@ -15,6 +15,18 @@
         }, function (error) {
             bladeNavigationService.setError('Error ' + error.status, blade);
         });
+    }
+
+    blade.edit = function (node) {
+        var newBlade = {
+            id: "aggregationPropertyDetails",
+            controller: 'virtoCommerce.catalogModule.aggregationPropertyDetailsController',
+            template: 'Modules/$(VirtoCommerce.Catalog)/Scripts/blades/aggregation-properties-details.tpl.html',
+            title: node.name,
+            storeId: blade.storeId,
+            property: node
+        };
+        bladeNavigationService.showBlade(newBlade, blade);
     }
 
     blade.select = function (node) {
@@ -38,7 +50,7 @@
     $scope.saveChanges = function () {
         blade.isLoading = true;
 
-        browseFilters.saveFilterProperties({ id: blade.storeId }, blade.selectedEntities, function (data) {
+        aggregationProperties.setProperties({ storeId: blade.storeId }, blade.selectedEntities, function (data) {
             angular.copy(blade.currentEntities, blade.origEntity);
             angular.copy(blade.selectedEntities, blade.origSelected);
             // $scope.bladeClose();

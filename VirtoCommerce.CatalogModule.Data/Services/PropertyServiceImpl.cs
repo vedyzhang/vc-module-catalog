@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using CacheManager.Core;
 using VirtoCommerce.CatalogModule.Data.Extensions;
@@ -7,6 +8,7 @@ using VirtoCommerce.CatalogModule.Data.Repositories;
 using VirtoCommerce.Domain.Catalog.Model;
 using VirtoCommerce.Domain.Catalog.Services;
 using VirtoCommerce.Platform.Core.Common;
+using VirtoCommerce.Platform.Data.Common;
 using VirtoCommerce.Platform.Data.Infrastructure;
 
 namespace VirtoCommerce.CatalogModule.Data.Services
@@ -16,6 +18,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
         private readonly Func<ICatalogRepository> _repositoryFactory;
         private readonly ICacheManager<object> _cacheManager;
         private readonly ICatalogService _catalogService;
+
         public PropertyServiceImpl(Func<ICatalogRepository> repositoryFactory, ICacheManager<object> cacheManager, ICatalogService catalogService)
         {
             _repositoryFactory = repositoryFactory;
@@ -32,41 +35,30 @@ namespace VirtoCommerce.CatalogModule.Data.Services
 
         public Property[] GetByIds(string[] propertyIds)
         {
-            using (var repository = _repositoryFactory())
-            {
-                //Optimize performance and CPU usage
-                repository.DisableChangesTracking();
+            var preloadedProperties = PreloadAllProperties();
 
-                var entities = repository.GetPropertiesByIds(propertyIds);
-                var result = entities.Select(x => x.ToModel(AbstractTypeFactory<Property>.TryCreateInstance())).ToArray();
+            var result = propertyIds
+                .Where(propertyId => preloadedProperties.ContainsKey(propertyId))
+                .Select(propertyId => preloadedProperties[propertyId])
+                .Select(MemberwiseCloneProperty)
+                .ToArray();
 
-                LoadDependencies(result);
-                ApplyInheritanceRules(result);
-
-                return result;
-            }
+            return result;
         }
 
         public Property[] GetAllCatalogProperties(string catalogId)
         {
-            using (var repository = _repositoryFactory())
-            {
-                //Optimize performance and CPU usage
-                repository.DisableChangesTracking();
-
-                var entities = repository.GetAllCatalogProperties(catalogId);
-                var result = entities.Select(x => x.ToModel(AbstractTypeFactory<Property>.TryCreateInstance())).ToArray();
-                return result;
-            }
+            var preloadedProperties = PreloadAllCatalogProperties(catalogId);
+            var result = preloadedProperties.Select(MemberwiseCloneProperty).ToArray();
+            return result;
         }
 
 
         public Property[] GetAllProperties()
         {
-            using (var repository = _repositoryFactory())
-            {
-                return GetByIds(repository.Properties.Select(x => x.Id).ToArray());
-            }
+            var preloadedProperties = PreloadAllProperties();
+            var result = preloadedProperties.Values.Select(MemberwiseCloneProperty).ToArray();
+            return result;
         }
 
 
@@ -110,7 +102,7 @@ namespace VirtoCommerce.CatalogModule.Data.Services
         {
             var property = GetById(propertyId);
             var result = property.DictionaryValues.ToArray();
-            if (!String.IsNullOrEmpty(keyword))
+            if (!string.IsNullOrEmpty(keyword))
             {
                 result = result.Where(x => x.Value.Contains(keyword)).ToArray();
             }
@@ -120,11 +112,10 @@ namespace VirtoCommerce.CatalogModule.Data.Services
 
         protected virtual void LoadDependencies(Property[] properties)
         {
-            var catalogsMap = _catalogService.GetCatalogsList().ToDictionary(x => x.Id);
-         
+            var catalogsMap = _catalogService.GetCatalogsList().ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
             foreach (var property in properties)
             {
-                property.Catalog = catalogsMap[property.CatalogId];              
+                property.Catalog = catalogsMap.GetValueOrThrow(property.CatalogId, $"property catalog with key {property.CatalogId} not exist");
             }
         }
 
@@ -134,9 +125,11 @@ namespace VirtoCommerce.CatalogModule.Data.Services
             foreach (var property in properties)
             {
                 var displayNamesComparer = AnonymousComparer.Create((PropertyDisplayName x) => $"{x.LanguageCode}");
-                var displayNamesForCatalogLanguages = property.Catalog.Languages.Select(x => new PropertyDisplayName { LanguageCode = x.LanguageCode });
+                var displayNamesForCatalogLanguages = property.Catalog.Languages.Select(x => new PropertyDisplayName { LanguageCode = x.LanguageCode }).ToList();
+
                 //Leave display names only with catalog languages
                 property.DisplayNames = property.DisplayNames.Intersect(displayNamesForCatalogLanguages, displayNamesComparer).ToList();
+
                 //Add missed
                 property.DisplayNames.AddRange(displayNamesForCatalogLanguages.Except(property.DisplayNames, displayNamesComparer));
             }
@@ -174,6 +167,85 @@ namespace VirtoCommerce.CatalogModule.Data.Services
         protected virtual void ResetCache()
         {
             _cacheManager.ClearRegion(CatalogConstants.CacheRegion);
+        }
+
+        protected virtual IDictionary<string, Property> PreloadAllProperties()
+        {
+            return _cacheManager.Get("AllProperties", CatalogConstants.CacheRegion, () =>
+            {
+                using (var repository = _repositoryFactory())
+                {
+                    repository.DisableChangesTracking();
+
+                    var propertyIds = repository.Properties.Select(p => p.Id).ToArray();
+                    var entities = repository.GetPropertiesByIds(propertyIds);
+                    var properties = entities.Select(p => p.ToModel(AbstractTypeFactory<Property>.TryCreateInstance())).ToArray();
+
+                    LoadDependencies(properties);
+                    ApplyInheritanceRules(properties);
+
+                    var result = properties.ToDictionary(p => p.Id, StringComparer.OrdinalIgnoreCase);
+
+                    return result;
+                }
+            });
+        }
+
+        protected virtual IList<Property> PreloadAllCatalogProperties(string catalogId)
+        {
+            return _cacheManager.Get($"AllCatalogProperties-{catalogId}", CatalogConstants.CacheRegion, () =>
+            {
+                using (var repository = _repositoryFactory())
+                {
+                    repository.DisableChangesTracking();
+
+                    var result = repository.GetAllCatalogProperties(catalogId)
+                        .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase) // Remove duplicates
+                        .Select(g => g.First())
+                        .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(p => p.ToModel(AbstractTypeFactory<Property>.TryCreateInstance()))
+                        .ToArray();
+
+                    return result;
+                }
+            });
+        }
+
+        // TODO: Move to domain
+        protected virtual Property MemberwiseCloneProperty(Property property)
+        {
+            var result = AbstractTypeFactory<Property>.TryCreateInstance();
+
+            // Entity
+            result.Id = property.Id;
+
+            // AuditableEntity
+            result.CreatedDate = property.CreatedDate;
+            result.ModifiedDate = property.ModifiedDate;
+            result.CreatedBy = property.CreatedBy;
+            result.ModifiedBy = property.ModifiedBy;
+
+            // Property
+            result.CatalogId = property.CatalogId;
+            result.CategoryId = property.CategoryId;
+            result.Name = property.Name;
+            result.Required = property.Required;
+            result.Dictionary = property.Dictionary;
+            result.Multivalue = property.Multivalue;
+            result.Multilanguage = property.Multilanguage;
+            result.Type = property.Type;
+            result.ValueType = property.ValueType;
+            result.IsInherited = property.IsInherited;
+
+            // TODO: clone reference objects
+            result.Catalog = property.Catalog;
+            result.Category = property.Category;
+            result.Attributes = property.Attributes;
+            result.DictionaryValues = property.DictionaryValues;
+            result.DisplayNames = property.DisplayNames;
+            result.ValidationRules = property.ValidationRules;
+
+            return result;
         }
     }
 }

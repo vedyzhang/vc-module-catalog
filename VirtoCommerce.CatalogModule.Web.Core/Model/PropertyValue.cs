@@ -1,16 +1,15 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using VirtoCommerce.Domain.Catalog.Model;
+using VirtoCommerce.Platform.Core.Common;
 
 namespace VirtoCommerce.CatalogModule.Web.Model
 {
     /// <summary>
     /// The actual property value assigned to concrete merchandising entity. 
     /// </summary>
-    public class PropertyValue
+    public class PropertyValue : Entity
     {
-        public string Id { get; set; }
-
         /// <summary>
         /// Gets or sets the name of the property that this value belongs to.
         /// </summary>
@@ -72,5 +71,7 @@ namespace VirtoCommerce.CatalogModule.Web.Model
         /// System flag used to mark that object was inherited from other
         /// </summary>
         public bool IsInherited { get; set; }
+
+        public bool PropertyMultivalue { get; set; }
     }
 }

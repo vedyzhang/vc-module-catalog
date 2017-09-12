@@ -55,8 +55,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="FluentValidation, Version=7.0.0.0, Culture=neutral, PublicKeyToken=7de548da2fbae0f0, processorArchitecture=MSIL">
-      <HintPath>..\packages\FluentValidation.7.1.0\lib\net45\FluentValidation.dll</HintPath>
-      <Private>True</Private>
+      <HintPath>..\packages\FluentValidation.7.1.1\lib\net45\FluentValidation.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Newtonsoft.Json, Version=9.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
@@ -75,16 +74,14 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="VirtoCommerce.Domain, Version=2.24.2.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\VirtoCommerce.Domain.2.24.2\lib\net461\VirtoCommerce.Domain.dll</HintPath>
-      <Private>True</Private>
+    <Reference Include="VirtoCommerce.Domain, Version=2.24.11.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\VirtoCommerce.Domain.2.24.11\lib\net461\VirtoCommerce.Domain.dll</HintPath>
     </Reference>
-    <Reference Include="VirtoCommerce.Platform.Core, Version=2.13.10.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\VirtoCommerce.Platform.Core.2.13.10\lib\net461\VirtoCommerce.Platform.Core.dll</HintPath>
+    <Reference Include="VirtoCommerce.Platform.Core, Version=2.13.15.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\VirtoCommerce.Platform.Core.2.13.15\lib\net461\VirtoCommerce.Platform.Core.dll</HintPath>
     </Reference>
-    <Reference Include="VirtoCommerce.Platform.Data, Version=2.13.9.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\VirtoCommerce.Platform.Data.2.13.9\lib\net461\VirtoCommerce.Platform.Data.dll</HintPath>
-      <Private>True</Private>
+    <Reference Include="VirtoCommerce.Platform.Data, Version=2.13.15.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\VirtoCommerce.Platform.Data.2.13.15\lib\net461\VirtoCommerce.Platform.Data.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -92,6 +89,7 @@
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
     <Compile Include="CatalogConstants.cs" />
+    <Compile Include="Extensions\DictionaryExtension.cs" />
     <Compile Include="Extensions\RepositoryExtension.cs" />
     <Compile Include="Infrastructure\Interceptors\IIndexingInterceptor.cs" />
     <Compile Include="Infrastructure\Interceptors\NearRealtimeIndexer.cs" />
@@ -207,22 +205,13 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Repositories\CatalogRepositoryImpl.cs" />
     <Compile Include="Repositories\ICatalogRepository.cs" />
-    <Compile Include="Search\BrowseFilters\AttributeFilter.cs" />
-    <Compile Include="Search\BrowseFilters\AttributeFilterValue.cs" />
-    <Compile Include="Search\BrowseFilters\BrowseFilterExtensions.cs" />
-    <Compile Include="Search\BrowseFilters\BrowseFilterProperty.cs" />
+    <Compile Include="Search\AggregationConverter.cs" />
     <Compile Include="Search\BrowseFilters\BrowseFilterService.cs" />
-    <Compile Include="Search\BrowseFilters\CategoryFilter.cs" />
-    <Compile Include="Search\BrowseFilters\CategoryFilterValue.cs" />
-    <Compile Include="Search\BrowseFilters\FilterDisplayName.cs" />
-    <Compile Include="Search\BrowseFilters\FilteredBrowsing.cs" />
-    <Compile Include="Search\BrowseFilters\FilterValueDisplay.cs" />
+    <Compile Include="Search\BrowseFilters\BrowseFilterServiceExtensions.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilter.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilterService.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilterValue.cs" />
-    <Compile Include="Search\BrowseFilters\PriceRangeFilter.cs" />
-    <Compile Include="Search\BrowseFilters\RangeFilter.cs" />
-    <Compile Include="Search\BrowseFilters\RangeFilterValue.cs" />
+    <Compile Include="Search\BrowseFilters\BrowseFilters.cs" />
     <Compile Include="Search\CatalogSearchResult.cs" />
     <Compile Include="Search\CatalogSearchService.cs" />
     <Compile Include="Search\CategorySearchRequestBuilder.cs" />
@@ -230,6 +219,7 @@
     <Compile Include="Search\CategorySearchService.cs" />
     <Compile Include="Search\FiltersContainer.cs" />
     <Compile Include="Search\FiltersHelper.cs" />
+    <Compile Include="Search\IAggregationConverter.cs" />
     <Compile Include="Search\ICategorySearchService.cs" />
     <Compile Include="Search\IndexDocumentHelper.cs" />
     <Compile Include="Search\Indexing\CatalogDocumentBuilder.cs" />
@@ -238,11 +228,13 @@
     <Compile Include="Search\Indexing\ProductDocumentBuilder.cs" />
     <Compile Include="Search\Indexing\ProductDocumentChangesProvider.cs" />
     <Compile Include="Search\IProductSearchService.cs" />
+    <Compile Include="Search\ITermFilterBuilder.cs" />
     <Compile Include="Search\ProductSearchRequestBuilder.cs" />
     <Compile Include="Search\ProductSearchResult.cs" />
     <Compile Include="Search\ProductSearchService.cs" />
-    <Compile Include="Search\QueryStringExtensions.cs" />
+    <Compile Include="Search\SearchCriteriaExtensions.cs" />
     <Compile Include="Search\StringsHelper.cs" />
+    <Compile Include="Search\TermFilterBuilder.cs" />
     <Compile Include="Services\AssociationServiceImpl.cs" />
     <Compile Include="Services\CatalogSearchServiceDecorator.cs" />
     <Compile Include="Services\CatalogSearchServiceImpl.cs" />
@@ -252,7 +244,9 @@
     <Compile Include="Services\CatalogServiceImpl.cs" />
     <Compile Include="Services\OutlineService.cs" />
     <Compile Include="Services\PropertyServiceImpl.cs" />
+    <Compile Include="Services\Validation\CategoryValidator.cs" />
     <Compile Include="Services\Validation\HasPropertiesValidator.cs" />
+    <Compile Include="Services\Validation\ProductValidator.cs" />
     <Compile Include="Services\Validation\PropertyValueValidator.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using VirtoCommerce.Domain.Catalog.Model.Search;
 using VirtoCommerce.Domain.Search;
 using VirtoCommerce.Platform.Core.Common;
 
@@ -9,6 +10,19 @@ namespace VirtoCommerce.CatalogModule.Data.Search
 {
     public static class FiltersHelper
     {
+        public static IFilter CreateOutlineFilter(CatalogSearchCriteriaBase criteria)
+        {
+            IFilter result = null;
+
+            var outlines = criteria.GetOutlines();
+            if (outlines.Any())
+            {
+                result = CreateTermFilter("__outline", outlines);
+            }
+
+            return result;
+        }
+
         public static IFilter CreateTermFilter(string fieldName, string value)
         {
             return new TermFilter
@@ -60,7 +74,7 @@ namespace VirtoCommerce.CatalogModule.Data.Search
 
         public static IFilter CreatePriceRangeFilter(string currency, IList<string> pricelists, string lower, string upper, bool includeLower, bool includeUpper)
         {
-            var commonFieldName = $"price_{currency}".ToLowerInvariant();
+            var commonFieldName = StringsHelper.JoinNonEmptyStrings("_", "price", currency).ToLowerInvariant();
             var result = GetPriceRangeFilterRecursive(0, commonFieldName, pricelists, lower, upper, includeLower, includeUpper);
             return result;
         }
@@ -80,12 +94,12 @@ namespace VirtoCommerce.CatalogModule.Data.Search
                 IFilter previousPricelistQuery = null;
                 if (pricelistNumber > 0)
                 {
-                    var previousFieldName = $"{commonFieldName}_{pricelists[pricelistNumber - 1]}".ToLowerInvariant();
+                    var previousFieldName = StringsHelper.JoinNonEmptyStrings("_", commonFieldName, pricelists[pricelistNumber - 1]).ToLowerInvariant();
                     previousPricelistQuery = CreateRangeFilter(previousFieldName, "0", null, false, false);
                 }
 
                 // Create positive query for current pricelist
-                var currentFieldName = $"{commonFieldName}_{pricelists[pricelistNumber]}".ToLowerInvariant();
+                var currentFieldName = StringsHelper.JoinNonEmptyStrings("_", commonFieldName, pricelists[pricelistNumber]).ToLowerInvariant();
                 var currentPricelistQuery = CreateRangeFilter(currentFieldName, lower, upper, includeLower, includeUpper);
 
                 // Get query for next pricelist
