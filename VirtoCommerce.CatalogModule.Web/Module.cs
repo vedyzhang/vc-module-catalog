@@ -67,8 +67,7 @@ namespace VirtoCommerce.CatalogModule.Web
             {
                 new EntityPrimaryKeyGeneratorInterceptor(),
                 _container.Resolve<AuditableInterceptor>(),
-                new ChangeLogInterceptor(_container.Resolve<Func<IPlatformRepository>>(), ChangeLogPolicy.Cumulative,
-                    new[] {nameof(ItemEntity), nameof(CategoryEntity)}, _container.Resolve<IUserNameResolver>()),
+                new ChangeLogInterceptor(_container.Resolve<Func<IPlatformRepository>>(), ChangeLogPolicy.Cumulative, new[] {nameof(ItemEntity), nameof(CategoryEntity)}),
                 new NearRealtimeIndexer(TryResolve<ISearchProvider>, _container.Resolve<ISettingsManager>(), TryResolve<IIndexingManager>)
             };
 
