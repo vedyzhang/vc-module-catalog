@@ -5,8 +5,7 @@ if (AppDependencies != undefined) {
     AppDependencies.push(catalogsModuleName);
 }
 
-angular.module(catalogsModuleName, [
-])
+angular.module(catalogsModuleName, ['ui.grid.validate'])
 .config(
   ['$stateProvider', function ($stateProvider) {
       $stateProvider
@@ -57,8 +56,8 @@ angular.module(catalogsModuleName, [
     };
 }])
 .run(
-  ['platformWebApp.authService', 'platformWebApp.mainMenuService', 'platformWebApp.widgetService', '$state', 'platformWebApp.pushNotificationTemplateResolver', 'platformWebApp.bladeNavigationService', 'virtoCommerce.catalogModule.catalogImportService', 'virtoCommerce.catalogModule.catalogExportService', 'platformWebApp.permissionScopeResolver', 'virtoCommerce.catalogModule.catalogs', 'virtoCommerce.catalogModule.predefinedSearchFilters',
-	function (authService, mainMenuService, widgetService, $state, pushNotificationTemplateResolver, bladeNavigationService, catalogImportService, catalogExportService, scopeResolver, catalogs, predefinedSearchFilters) {
+  ['platformWebApp.authService', 'platformWebApp.mainMenuService', 'platformWebApp.widgetService', '$state', 'platformWebApp.pushNotificationTemplateResolver', 'platformWebApp.bladeNavigationService', 'virtoCommerce.catalogModule.catalogImportService', 'virtoCommerce.catalogModule.catalogExportService', 'platformWebApp.permissionScopeResolver', 'virtoCommerce.catalogModule.catalogs', 'virtoCommerce.catalogModule.predefinedSearchFilters', 'platformWebApp.metaFormsService', 
+	function (authService, mainMenuService, widgetService, $state, pushNotificationTemplateResolver, bladeNavigationService, catalogImportService, catalogExportService, scopeResolver, catalogs, predefinedSearchFilters, metaFormsService) {
 
 	    //Register module in main menu
 	    var menuItem = {
@@ -344,5 +343,11 @@ angular.module(catalogsModuleName, [
           { keyword: 'price_usd:[100 TO 200]', id: 3, name: 'catalog.blades.categories-items-list.labels.filter-priceRange' },
           { keyword: 'is:priced', id: 2, name: 'catalog.blades.categories-items-list.labels.filter-withPrice' },
           { keyword: 'is:unpriced', id: 1, name: 'catalog.blades.categories-items-list.labels.filter-priceless' }
-	    ]);
+        ]);
+
+        //meta-form used only for external extensions 
+        //We did not include the default product fields in meta-form, because the resulting form looks ugly
+        //TODO: need to improve meta-form to support more flexible layout management
+        //metaFormsService.registerMetaFields("productDetail", metafieldsDefinitions.productMetafields);
+        //metaFormsService.registerMetaFields("categoryDetail", metafieldsDefinitions.categoryMetafields);
 	}]);

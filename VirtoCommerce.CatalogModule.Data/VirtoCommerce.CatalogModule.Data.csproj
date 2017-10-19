@@ -74,8 +74,8 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="VirtoCommerce.Domain, Version=2.24.11.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\VirtoCommerce.Domain.2.24.11\lib\net461\VirtoCommerce.Domain.dll</HintPath>
+    <Reference Include="VirtoCommerce.Domain, Version=2.24.13.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\VirtoCommerce.Domain.2.24.13\lib\net461\VirtoCommerce.Domain.dll</HintPath>
     </Reference>
     <Reference Include="VirtoCommerce.Platform.Core, Version=2.13.15.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\VirtoCommerce.Platform.Core.2.13.15\lib\net461\VirtoCommerce.Platform.Core.dll</HintPath>
@@ -205,7 +205,6 @@
     <Compile Include="Repositories\ICatalogRepository.cs" />
     <Compile Include="Search\AggregationConverter.cs" />
     <Compile Include="Search\BrowseFilters\BrowseFilterService.cs" />
-    <Compile Include="Search\BrowseFilters\BrowseFilterServiceExtensions.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilter.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilterService.cs" />
     <Compile Include="Search\BrowseFilters\IBrowseFilterValue.cs" />

@@ -1,4 +1,9 @@
 ﻿<div class="blade-static" ng-class="{'__expanded': !isCatalogSelectMode()}">
+    <style>
+        .breadcrumbs .menu .menu-item .menu-link {
+            max-width: 131px;
+        }
+    </style>
     <va-breadcrumb ng-model="blade.breadcrumbs" blade-id="blade.id" ng-if="!isCatalogSelectMode()"></va-breadcrumb>
     <div class="form-group">
         <vc-item-search blade="blade"></vc-item-search>
@@ -49,7 +54,7 @@
 <script type="text/ng-template" id="item-list-icon.cell.html">
     <div class="ui-grid-cell-contents">
         <div class="product-img">
-            <div class="image" style="background-image: url('{{COL_FIELD}}')" ng-if="row.entity.type!=='category' && COL_FIELD"></div>
+            <img class="image" ng-src="{{COL_FIELD}}" ng-if="row.entity.type!=='category' && COL_FIELD">
             <i class="table-ico fa" ng-class="row.entity.type == 'category' ? 'fa-folder' : 'fa-image'" ng-if="row.entity.type ==='category' || !COL_FIELD"></i>
         </div>
     </div>

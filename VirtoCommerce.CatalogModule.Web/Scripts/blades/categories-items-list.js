@@ -25,8 +25,6 @@
                 listEntries.listitemssearch(
                     searchCriteria,
                     function (data) {
-                        transformByFilters(data.listEntries);
-
                         blade.isLoading = false;
                         $scope.pageSettings.totalItems = data.totalCount;
                         $scope.items = data.listEntries;
@@ -496,45 +494,11 @@
                 }
             };
 
-            function transformByFilters(data) {
-                if (_.any(data)) {
-                    _.each(data, function (x) {
-                        x.$path = _.any(x.path) ? x.path.join(" \\ ") : '\\';
-                    });
-
-                    if (filter.keyword) { // sorting: categories first, then root products, then all other products in categories
-                        data.sort(function (a, b) { return a.type !== b.type ? a.type > b.type : a.$path === '\\' ? false : b.$path === '\\' ? true : a.$path > b.$path; })
-                    }
-
-                    if ($scope.gridApi) {
-                        if (filter.keyword) {
-                            if (!_.any($scope.gridApi.grouping.getGrouping().grouping)) {
-                                $scope.gridApi.grouping.groupColumn('$path');
-                            }
-
-                            $timeout($scope.gridApi.treeBase.expandAllRows);
-                        } else {
-                            $scope.gridApi.grouping.clearGrouping();
-                        }
-                    }
-                } else
-                    $scope.gridApi = undefined;
-            }
-
 
             // ui-grid
             $scope.setGridOptions = function (gridOptions) {
                 uiGridHelper.initialize($scope, gridOptions, function (gridApi) {
-                    if (filter.keyword) {
-                        $timeout(function () {
-                            gridApi.grouping.groupColumn('$path');
-                            $timeout(gridApi.treeBase.expandAllRows);
-                        });
-                    }
-
-                    $timeout(function () {
-                        uiGridHelper.bindRefreshOnSortChanged($scope);
-                    }, 200);
+                    uiGridHelper.bindRefreshOnSortChanged($scope);
                 });
                 bladeUtils.initializePagination($scope);
             };
