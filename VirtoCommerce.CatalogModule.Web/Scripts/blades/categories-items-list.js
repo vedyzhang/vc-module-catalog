@@ -25,6 +25,8 @@
                 listEntries.listitemssearch(
                     searchCriteria,
                     function (data) {
+                        transformByFilters(data.listEntries);
+
                         blade.isLoading = false;
                         $scope.pageSettings.totalItems = data.totalCount;
                         $scope.items = data.listEntries;
@@ -251,35 +253,6 @@
                 }
             };
 
-            $scope.selectGroupByItem = function (listEntry, $id) {
-                if (listEntry.outline) {
-                    $scope.selectedNodeId = $id;
-                    var listItem = {
-                        id: listEntry.outline.slice(-1)[0],
-                        name: listEntry.path.slice(-1)[0]
-                    };
-
-                    newBlade = {
-                        id: 'itemsList' + (blade.level + 1),
-                        level: blade.level + 1,
-                        mode: blade.mode,
-                        // isBrowsingLinkedCategory: blade.isBrowsingLinkedCategory || $scope.hasLinks(listItem),
-                        title: 'catalog.blades.categories-items-list.title',
-                        // subtitle: 'catalog.blades.categories-items-list.subtitle',
-                        // subtitleValues: listItem.name ? { name: listItem.name } : '',
-                        catalogId: blade.catalogId,
-                        catalog: blade.catalog,
-                        categoryId: listItem.id,
-                        category: listItem,
-                        controller: 'virtoCommerce.catalogModule.categoriesItemsListController',
-                        template: 'Modules/$(VirtoCommerce.Catalog)/Scripts/blades/categories-items-list.tpl.html'
-                    };
-
-                    newBlade.breadcrumbs = generateBreadcrumbs(newBlade, listEntry, listEntry.outline.length);
-                    bladeNavigationService.showBlade(newBlade, blade);
-                }
-            };
-
             function generateBreadcrumbs(newBlade, listEntry, count) {
                 var newBreadcrumbs = [];
                 if (blade.catalog)
@@ -494,6 +467,11 @@
                 }
             };
 
+            function transformByFilters(data) {
+                _.each(data, function (x) {
+                    x.$path = _.any(x.path) ? x.path.join(" \\ ") : '\\';
+                });
+            }
 
             // ui-grid
             $scope.setGridOptions = function (gridOptions) {
@@ -503,13 +481,6 @@
                 bladeUtils.initializePagination($scope);
             };
 
-            $scope.getGroupInfo = function (groupEntity) {
-                return _.values(groupEntity)[0];
-            };
-
-            blade.getSelectedRows = function () {
-                return $scope.gridApi.selection.getSelectedRows();
-            }
 
             //No need to call this because page 'pageSettings.currentPage' is watched!!! It would trigger subsequent duplicated req...
             //blade.refresh();
